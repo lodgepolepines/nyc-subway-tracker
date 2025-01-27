@@ -23,6 +23,29 @@ VERNON_JACKSON_7_S = "721S"  # Flushing-bound
 # CSS for the 8-bit train animation and styling
 CUSTOM_CSS = """
 <style>
+    /* Import R46 Font */
+    @font-face {
+        font-family: 'NYCTA-R46';
+        src: url('nycta-r46.ttf') format('truetype');
+    }
+
+    /* Base MTA Font Stack */
+    * {
+        font-family: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif !important;
+    }
+
+    /* Override Streamlit's default fonts */
+    .stMarkdown, .stText, h1, h2, h3, p, div {
+        font-family: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif !important;
+    }
+
+    /* Headers */
+    h1, h2, h3 {
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    /* Train animation */
     .train-container {
         width: 100%;
         height: 50px;
@@ -48,23 +71,61 @@ CUSTOM_CSS = """
     .g-train { color: #6CBE45; }
     .seven-train { color: #B933AD; }
     
-    .train-header {
-        font-family: 'Courier New', monospace;
-        font-size: 24px;
-    }
-    
+    /* LED Display Styling */
     .time-display {
-        padding: 5px 10px;
-        border-radius: 5px;
-        margin: 2px 0;
+        font-family: 'NYCTA-R46', monospace !important;
+        font-size: 20px;
+        padding: 8px 12px;
+        border-radius: 2px;
+        margin: 4px 0;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        background: #000;
+        border: 1px solid #333;
+        line-height: 1.2;
     }
     
-    .g-time { background-color: rgba(108, 190, 69, 0.1); }
-    .seven-time { background-color: rgba(185, 51, 173, 0.1); }
+    .g-time { 
+        color: #6CBE45;
+        text-shadow: 0 0 2px rgba(108, 190, 69, 0.7);
+    }
+    
+    .seven-time { 
+        color: #B933AD;
+        text-shadow: 0 0 2px rgba(185, 51, 173, 0.7);
+    }
+
+    /* Express badge with LED effect */
+    .express-badge {
+        font-family: 'NYCTA-R46', monospace !important;
+        background-color: #B933AD;
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 2px;
+        font-size: 0.8em;
+        margin-left: 5px;
+        text-shadow: 0 0 2px rgba(255, 255, 255, 0.7);
+        display: inline-block;
+    }
+
+    /* Subtle scanline effect */
+    .time-display::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+            transparent 0%,
+            rgba(255, 255, 255, 0.02) 50%,
+            transparent 100%
+        );
+        pointer-events: none;
+    }
 </style>
 """
 
-# 8-bit style train ASCII art
 TRAIN_HTML = """
 <div class="train-container">
     <div class="train">
@@ -76,11 +137,8 @@ TRAIN_HTML = """
 def setup_page():
     st.set_page_config(page_title="NYC Subway Tracker - G & 7 Lines", page_icon="🚇")
     st.title("NYC Subway Tracker")
-    
-    # Insert custom CSS and train animation
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown(TRAIN_HTML, unsafe_allow_html=True)
-    
     st.subheader("G & 7 Lines at Greenpoint Ave and Vernon-Jackson")
 
 def fetch_feed(url):
@@ -111,7 +169,19 @@ def fetch_feed(url):
         st.error("Unable to fetch transit data")
         return None
 
-def process_train_times(feed, station_id):
+def is_express_train(trip_update):
+    # Check route ID for express designation
+    try:
+        route_id = trip_update.trip.route_id
+        return route_id == "7X" or "..express.." in str(trip_update.trip.trip_id).lower()
+    except:
+        return False
+
+def process_train_times(feed, station_ids, line_type):
+    """
+    Process train times for specified station IDs and line type
+    Returns list of tuples containing (arrival_timestamp, direction, is_express)
+    """
     if not feed:
         return []
     
@@ -123,34 +193,55 @@ def process_train_times(feed, station_id):
             if entity.HasField('trip_update'):
                 update = entity.trip_update
                 for stop_time in update.stop_time_update:
-                    if stop_time.stop_id == station_id:
+                    if stop_time.stop_id in station_ids:
                         if stop_time.HasField('arrival'):
                             arrival_time = stop_time.arrival.time
                             if arrival_time > current_time:
-                                minutes_away = (arrival_time - current_time) // 60
-                                if 0 <= minutes_away <= 120:
-                                    arrival_times.append(minutes_away)
+                                # Skip Court Sq-bound G trains
+                                if line_type == 'G' and stop_time.stop_id.endswith('N'):
+                                    continue
+                                    
+                                # Determine direction based on station ID and line type
+                                if line_type == 'G':
+                                    direction = "Church Ave-bound"
+                                else:
+                                    direction = "Manhattan-bound" if stop_time.stop_id.endswith('N') else "Flushing-bound"
+                                
+                                is_express = is_express_train(update)
+                                arrival_times.append((arrival_time, direction, is_express))
         
-        return sorted(arrival_times)[:3]
+        if line_type == '7':
+            # Sort Manhattan-bound first, then Flushing-bound
+            manhattan_bound = [(t, d, e) for t, d, e in arrival_times if d == "Manhattan-bound"]
+            flushing_bound = [(t, d, e) for t, d, e in arrival_times if d == "Flushing-bound"]
+            
+            manhattan_bound.sort(key=lambda x: x[0])
+            flushing_bound.sort(key=lambda x: x[0])
+            
+            return manhattan_bound[:3] + flushing_bound[:3]  # Show top 3 trains in each direction
+        else:
+            # For G train, just show Church Ave-bound trains
+            return sorted(arrival_times, key=lambda x: x[0])[:6]
     
     except Exception as e:
         logger.error(f"Error processing times: {e}")
         return []
 
-def display_train_times(times, station_name, direction, train_line):
-    # Define CSS class based on train line
+def display_train_times(times, station_name, train_line):
     css_class = "g-time" if train_line == "G" else "seven-time"
     line_color = "#6CBE45" if train_line == "G" else "#B933AD"
     
     st.markdown(f'<h3 style="color: {line_color};">{train_line} Train - {station_name}</h3>', unsafe_allow_html=True)
-    st.markdown(f'<p style="color: {line_color};">{direction}</p>', unsafe_allow_html=True)
     
     if not times:
         st.markdown(f'<div class="{css_class} time-display">No upcoming trains</div>', unsafe_allow_html=True)
     else:
-        for i, minutes in enumerate(times, 1):
+        for arrival_time, direction, is_express in times:
+            # Convert timestamp to readable time
+            time_str = datetime.fromtimestamp(arrival_time).strftime("%I:%M %p").lstrip("0").lower()
+            express_badge = '<span class="express-badge">EXPRESS</span>' if is_express else ''
             st.markdown(
-                f'<div class="{css_class} time-display">Train {i}: {minutes} minutes away</div>',
+                f'<div class="{css_class} time-display">{direction} - {time_str} {express_badge}</div>',
                 unsafe_allow_html=True
             )
 
@@ -163,17 +254,15 @@ def update_displays():
     
     with col1:
         if g_feed:
-            g_north = process_train_times(g_feed, GREENPOINT_AVE_G)
-            g_south = process_train_times(g_feed, GREENPOINT_AVE_G_S)
-            display_train_times(g_north, "Greenpoint Ave", "Northbound (Court Sq)", "G")
-            display_train_times(g_south, "Greenpoint Ave", "Southbound (Church Ave)", "G")
+            # Process only Church Ave-bound G trains
+            g_times = process_train_times(g_feed, [GREENPOINT_AVE_G_S], 'G')
+            display_train_times(g_times, "Greenpoint Ave", "G")
     
     with col2:
         if seven_feed:
-            seven_manhattan = process_train_times(seven_feed, VERNON_JACKSON_7)
-            seven_flushing = process_train_times(seven_feed, VERNON_JACKSON_7_S)
-            display_train_times(seven_manhattan, "Vernon-Jackson", "Manhattan-bound", "7")
-            display_train_times(seven_flushing, "Vernon-Jackson", "Flushing-bound", "7")
+            # Process both directions for 7 train, Manhattan-bound first
+            seven_times = process_train_times(seven_feed, [VERNON_JACKSON_7, VERNON_JACKSON_7_S], '7')
+            display_train_times(seven_times, "Vernon-Jackson", "7")
     
     st.markdown(f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")
 
