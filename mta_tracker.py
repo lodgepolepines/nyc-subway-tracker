@@ -53,7 +53,6 @@ CUSTOM_CSS = """
         height: 50px;
         position: relative;
         overflow: hidden;
-        margin: 20px 0;
     }
     
     .train {
@@ -272,18 +271,13 @@ def main():
     if debug_mode:
         logger.setLevel(logging.DEBUG)
     
-    auto_refresh = st.checkbox("Auto-refresh every 30 seconds", value=True)
-    
     try:
-        if auto_refresh:
-            placeholder = st.empty()
-            while True:
-                with placeholder.container():
-                    update_displays()
-                time.sleep(30)
-                placeholder.empty()
-        else:
-            update_displays()
+        placeholder = st.empty()
+        while True:
+            with placeholder.container():
+                update_displays()
+            time.sleep(30)
+            placeholder.empty()
     
     except Exception as e:
         logger.error(f"Main loop error: {e}")
