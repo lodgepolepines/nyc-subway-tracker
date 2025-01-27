@@ -3,6 +3,7 @@ import requests
 import google.transit.gtfs_realtime_pb2 as gtfs_rt
 import time
 from datetime import datetime
+import pytz
 from google.protobuf.message import DecodeError
 import logging
 
@@ -13,12 +14,13 @@ logger = logging.getLogger(__name__)
 # Constants
 G_TRAIN_FEED = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g"
 SEVEN_TRAIN_FEED = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs"
+EASTERN_TZ = pytz.timezone('America/New_York')
 
-# Station IDs
-GREENPOINT_AVE_G = "G26N"  # Northbound
-GREENPOINT_AVE_G_S = "G26S"  # Southbound
-VERNON_JACKSON_7 = "721N"  # Manhattan-bound
-VERNON_JACKSON_7_S = "721S"  # Flushing-bound
+# Station IDs remain the same...
+GREENPOINT_AVE_G = "G26N"
+GREENPOINT_AVE_G_S = "G26S"
+VERNON_JACKSON_7 = "721N"
+VERNON_JACKSON_7_S = "721S"
 
 # CSS for the 8-bit train animation and styling
 CUSTOM_CSS = """
@@ -136,7 +138,7 @@ TRAIN_HTML = """
 
 def setup_page():
     st.set_page_config(page_title="NYC Subway Tracker - G & 7 Lines", page_icon="🚇")
-    st.title("NYC Subway Tracker")
+    st.title("MTA Tracker")
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown(TRAIN_HTML, unsafe_allow_html=True)
     st.subheader("G & 7 Lines at Greenpoint Ave and Vernon-Jackson")
@@ -177,11 +179,14 @@ def is_express_train(trip_update):
     except:
         return False
 
+def convert_to_eastern_time(timestamp):
+    """Convert UTC timestamp to Eastern Time."""
+    utc_dt = datetime.fromtimestamp(timestamp, pytz.UTC)
+    eastern_dt = utc_dt.astimezone(EASTERN_TZ)
+    return eastern_dt
+
 def process_train_times(feed, station_ids, line_type):
-    """
-    Process train times for specified station IDs and line type
-    Returns list of tuples containing (arrival_timestamp, direction, is_express)
-    """
+    """Process train times for specified station IDs and line type"""
     if not feed:
         return []
     
@@ -197,30 +202,24 @@ def process_train_times(feed, station_ids, line_type):
                         if stop_time.HasField('arrival'):
                             arrival_time = stop_time.arrival.time
                             if arrival_time > current_time:
-                                # Skip Court Sq-bound G trains
                                 if line_type == 'G' and stop_time.stop_id.endswith('N'):
                                     continue
                                     
-                                # Determine direction based on station ID and line type
-                                if line_type == 'G':
-                                    direction = "Church Ave-bound"
-                                else:
-                                    direction = "Manhattan-bound" if stop_time.stop_id.endswith('N') else "Flushing-bound"
+                                direction = "Church Ave-bound" if line_type == 'G' else \
+                                          "Manhattan-bound" if stop_time.stop_id.endswith('N') else "Flushing-bound"
                                 
                                 is_express = is_express_train(update)
                                 arrival_times.append((arrival_time, direction, is_express))
         
         if line_type == '7':
-            # Sort Manhattan-bound first, then Flushing-bound
             manhattan_bound = [(t, d, e) for t, d, e in arrival_times if d == "Manhattan-bound"]
             flushing_bound = [(t, d, e) for t, d, e in arrival_times if d == "Flushing-bound"]
             
             manhattan_bound.sort(key=lambda x: x[0])
             flushing_bound.sort(key=lambda x: x[0])
             
-            return manhattan_bound[:3] + flushing_bound[:3]  # Show top 3 trains in each direction
+            return manhattan_bound[:3] + flushing_bound[:3]
         else:
-            # For G train, just show Church Ave-bound trains
             return sorted(arrival_times, key=lambda x: x[0])[:6]
     
     except Exception as e:
@@ -237,8 +236,9 @@ def display_train_times(times, station_name, train_line):
         st.markdown(f'<div class="{css_class} time-display">No upcoming trains</div>', unsafe_allow_html=True)
     else:
         for arrival_time, direction, is_express in times:
-            # Convert timestamp to readable time
-            time_str = datetime.fromtimestamp(arrival_time).strftime("%I:%M %p").lstrip("0").lower()
+            # Convert timestamp to Eastern Time
+            eastern_time = convert_to_eastern_time(arrival_time)
+            time_str = eastern_time.strftime("%I:%M %p").lstrip("0").lower()
             express_badge = '<span class="express-badge">EXPRESS</span>' if is_express else ''
             st.markdown(
                 f'<div class="{css_class} time-display">{direction} - {time_str} {express_badge}</div>',
@@ -254,17 +254,17 @@ def update_displays():
     
     with col1:
         if g_feed:
-            # Process only Church Ave-bound G trains
             g_times = process_train_times(g_feed, [GREENPOINT_AVE_G_S], 'G')
             display_train_times(g_times, "Greenpoint Ave", "G")
     
     with col2:
         if seven_feed:
-            # Process both directions for 7 train, Manhattan-bound first
             seven_times = process_train_times(seven_feed, [VERNON_JACKSON_7, VERNON_JACKSON_7_S], '7')
             display_train_times(seven_times, "Vernon-Jackson", "7")
     
-    st.markdown(f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")
+    # Display current time in Eastern Time
+    current_eastern = datetime.now(EASTERN_TZ)
+    st.markdown(f"Last updated: {current_eastern.strftime('%I:%M:%S %p %Z')}")
 
 def main():
     setup_page()
