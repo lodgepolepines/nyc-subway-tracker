@@ -137,11 +137,10 @@ TRAIN_HTML = """
 """
 
 def setup_page():
-    st.set_page_config(page_title="NYC Subway Tracker - G & 7 Lines", page_icon="🚇")
+    st.set_page_config(page_title="MTA Tracker", page_icon="🚇")
     st.title("MTA Tracker")
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.markdown(TRAIN_HTML, unsafe_allow_html=True)
-    st.subheader("G & 7 Lines at Greenpoint Ave and Vernon-Jackson")
 
 def fetch_feed(url):
     headers = {
