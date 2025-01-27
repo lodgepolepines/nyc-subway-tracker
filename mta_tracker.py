@@ -25,10 +25,21 @@ VERNON_JACKSON_7_S = "721S"
 # CSS for the 8-bit train animation and styling
 CUSTOM_CSS = """
 <style>
-    /* Hide Streamlit Menu */
+    /* Hide Streamlit Menu and adjust spacing */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Remove top padding */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 0rem !important;
+    }
+    
+    /* Adjust title spacing */
+    .stTitle {
+        margin-top: -3rem;
+    }
 
     /* Import R46 Font */
     @font-face {
