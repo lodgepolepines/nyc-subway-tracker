@@ -25,6 +25,11 @@ VERNON_JACKSON_7_S = "721S"
 # CSS for the 8-bit train animation and styling
 CUSTOM_CSS = """
 <style>
+    /* Hide Streamlit Menu */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
     /* Import R46 Font */
     @font-face {
         font-family: 'NYCTA-R46';
@@ -170,7 +175,6 @@ def fetch_feed(url):
         return None
 
 def is_express_train(trip_update):
-    # Check route ID for express designation
     try:
         route_id = trip_update.trip.route_id
         return route_id == "7X" or "..express.." in str(trip_update.trip.trip_id).lower()
@@ -234,7 +238,6 @@ def display_train_times(times, station_name, train_line):
         st.markdown(f'<div class="{css_class} time-display">No upcoming trains</div>', unsafe_allow_html=True)
     else:
         for arrival_time, direction, is_express in times:
-            # Convert timestamp to Eastern Time
             eastern_time = convert_to_eastern_time(arrival_time)
             time_str = eastern_time.strftime("%I:%M %p").lstrip("0").lower()
             express_badge = '<span class="express-badge">EXPRESS</span>' if is_express else ''
@@ -260,16 +263,11 @@ def update_displays():
             seven_times = process_train_times(seven_feed, [VERNON_JACKSON_7, VERNON_JACKSON_7_S], '7')
             display_train_times(seven_times, "Vernon-Jackson", "7")
     
-    # Display current time in Eastern Time
     current_eastern = datetime.now(EASTERN_TZ)
     st.markdown(f"Last updated: {current_eastern.strftime('%I:%M:%S %p %Z')}")
 
 def main():
     setup_page()
-    
-    debug_mode = st.sidebar.checkbox("Debug Mode")
-    if debug_mode:
-        logger.setLevel(logging.DEBUG)
     
     try:
         placeholder = st.empty()
